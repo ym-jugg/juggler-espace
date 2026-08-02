@@ -130,8 +130,8 @@
     border:1px solid var(--line); border-radius:6px;
   }
   .floor-cell{
-    width:27px; height:27px; border-radius:3px; display:flex; align-items:center; justify-content:center;
-    font-family: var(--mono); font-size:9px; font-weight:700; color:#0c0a07; cursor:pointer;
+    width:34px; height:27px; border-radius:3px; display:flex; align-items:center; justify-content:center;
+    font-family: var(--mono); font-size:8.5px; font-weight:700; color:#0c0a07; cursor:pointer;
     box-shadow: inset 0 0 0 1px rgba(0,0,0,0.3);
     position:relative;
   }
@@ -419,19 +419,63 @@ function renderDateChips(){
 }
 renderDateChips();
 
-// grid bounds
-let maxRow=0, maxCol=0;
-Object.values(DATA.positions).forEach(p=>{ maxRow=Math.max(maxRow,p.row); maxCol=Math.max(maxCol,p.col); });
+// grid bounds — use the original raw row/col positions everywhere (no per-machine
+// compression), since columns are shared across machines and shrinking them
+// globally shifts other machines' spacing too. We DO trim any fully-empty margin
+// columns on the left/right of the whole grid (after the edge-row packing below),
+// so the figure isn't padded with blank space that no row actually uses.
+let maxRow=0, maxColRaw=0;
+Object.values(DATA.positions).forEach(p=>{ maxRow=Math.max(maxRow,p.row); maxColRaw=Math.max(maxColRaw,p.col); });
+
+// Only rows made up ENTIRELY of the three "edge" machines (ハッピージャグラーVIII /
+// ジャグラーガールズ / ゴーゴージャグラー3) get their horizontal gaps closed —
+// any row that also contains another machine (e.g. マイジャグラーV, ネオアイム) is
+// left at its original column positions so those machines' spacing is untouched.
+const EDGE_MACHINES = new Set(['ハッピージャグラーVIII','ジャグラーガールズ','ゴーゴージャグラー3']);
+const rowsByIndex = {};
+Object.entries(DATA.positions).forEach(([slot,p])=>{
+  (rowsByIndex[p.row] = rowsByIndex[p.row] || []).push({slot, col:p.col, machine: DATA.slotMachine[slot]});
+});
+const packedCol = {}; // slot -> overridden column for rendering (pre-margin-trim)
+Object.entries(rowsByIndex).forEach(([rowStr, items])=>{
+  const allEdge = items.every(it => EDGE_MACHINES.has(it.machine));
+  if(!allEdge) return;
+  const rowNum = parseInt(rowStr, 10);
+  const isBottomRow = rowNum === maxRow; // shift only the bottom-most row
+  items.sort((a,b)=>a.col-b.col);
+  let newCol = items[0].col;
+  let prevMachine = null;
+  items.forEach((it,i)=>{
+    if(i===0){ newCol = it.col; }
+    else { newCol += (it.machine===prevMachine) ? 1 : 2; }
+    packedCol[it.slot] = newCol + (isBottomRow ? 4 : 0);
+    prevMachine = it.machine;
+  });
+});
+
+// Trim empty left/right margin: find the true min/max column actually used by
+// any cell once edge-row packing is applied, then shift everything so the
+// leftmost used column becomes column 0.
+let usedMin = Infinity, usedMax = -Infinity;
+Object.entries(DATA.positions).forEach(([slot,p])=>{
+  const c = (packedCol[slot] !== undefined) ? packedCol[slot] : p.col;
+  usedMin = Math.min(usedMin, c);
+  usedMax = Math.max(usedMax, c);
+});
+Object.keys(packedCol).forEach(slot=>{ packedCol[slot] -= usedMin; });
+const marginShift = usedMin;
+const maxCol = usedMax - usedMin;
 
 const floorGrid = document.getElementById('floorGrid');
-floorGrid.style.gridTemplateColumns = `repeat(${maxCol+1}, 27px)`;
+floorGrid.style.gridTemplateColumns = `repeat(${maxCol+1}, 34px)`;
 floorGrid.style.gridTemplateRows = `repeat(${maxRow+1}, 27px)`;
 
 function renderFloor(){
   floorGrid.innerHTML='';
   const cellMap = {};
   Object.entries(DATA.positions).forEach(([slot,pos])=>{
-    cellMap[`${pos.row}_${pos.col}`] = slot;
+    const col = (packedCol[slot] !== undefined) ? packedCol[slot] : (pos.col - marginShift);
+    cellMap[`${pos.row}_${col}`] = slot;
   });
   for(let r=0;r<=maxRow;r++){
     for(let c=0;c<=maxCol;c++){
@@ -451,7 +495,7 @@ function renderFloor(){
         div.style.background = setting ? SETTING_HEX[Math.min(6,Math.max(1,setting))] : '#2a251d';
         div.style.gridColumn = c+1;
         div.style.gridRow = r+1;
-        div.textContent = slot.slice(-2);
+        div.textContent = slot;
         div.addEventListener('mousemove', (e)=>{
           const machine = DATA.slotMachine[slot];
           let html = `<div class="tt-title">${machine} #${slot}</div>`;
