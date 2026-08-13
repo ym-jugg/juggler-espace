@@ -71,7 +71,14 @@
 
   /* legend */
   .legend{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; font-family: var(--mono); font-size:11px; color:var(--text-dim); margin-bottom:14px;}
-  .legend-scale{ display:flex; align-items:center; gap:4px;}
+  .legend-scale{ display:flex; align-items:center; gap:4px; flex-wrap:wrap;}
+  .legend-scale-grid{
+    display:grid; grid-template-columns:repeat(3, auto); grid-auto-flow:row;
+    justify-content:start; column-gap:16px; row-gap:6px; margin-bottom:14px;
+  }
+  .legend-scale-grid .ls-item{ display:flex; align-items:center; gap:4px; }
+  .legend-scale-grid .ls-item span.legend-chip{ flex-shrink:0; }
+  .legend-scale-grid .ls-item span.ls-label{ font-size:9px; color:var(--text-dim); font-family:var(--mono); white-space:nowrap; }
   .legend-chip{ width:20px; height:14px; border-radius:2px; display:inline-block;}
   .legend-label{margin-right:2px;}
 
@@ -209,7 +216,8 @@
 
   <div class="tabs">
     <button class="tab-btn active" data-view="trend">台トレンド</button>
-    <button class="tab-btn" data-view="floor">フロアヒートマップ</button>
+    <button class="tab-btn" data-view="floor">設定マップ</button>
+    <button class="tab-btn" data-view="payout">出玉マップ</button>
   </div>
 
   <!-- TREND VIEW -->
@@ -259,6 +267,21 @@
         <div class="floor-grid" id="floorGrid"></div>
       </div>
       <div class="machine-legend" id="machineLegend"></div>
+    </div>
+  </div>
+
+  <!-- PAYOUT VIEW -->
+  <div class="view" id="view-payout">
+    <div class="panel">
+      <div class="floor-toolbar">
+        <span class="legend-label" style="font-family:var(--mono); font-size:11px; color:var(--text-dim);">表示日:</span>
+        <div class="chips" id="dateChipsPayout"></div>
+      </div>
+      <div class="legend-scale-grid" id="payoutLegend"></div>
+      <div class="floor-wrap">
+        <div class="floor-grid" id="payoutGrid"></div>
+      </div>
+      <div class="machine-legend" id="machineLegendPayout"></div>
     </div>
   </div>
 
@@ -333,6 +356,7 @@ function onPeriodChange(){
   renderTrend();
   renderDateChips();
   renderFloor();
+  renderPayout();
 }
 renderPeriodChips();
 
@@ -419,6 +443,34 @@ function avgSetting(days, periodDates){
   const filtered = periodDates ? days.filter(d=>periodDates.includes(d.date)) : days;
   if(!filtered.length) return null;
   return filtered.reduce((a,d)=>a+d.setting,0)/filtered.length;
+}
+
+function avgPayout(days, periodDates){
+  const filtered = periodDates ? days.filter(d=>periodDates.includes(d.date)) : days;
+  if(!filtered.length) return null;
+  return filtered.reduce((a,d)=>a+d.sa,0)/filtered.length;
+}
+
+// 出玉ヒートマップの色分け。設定マップの配色とは完全には揃えず、
+// 差枚専用に見やすさを優先した9段階の連続グラデーション(青→水色→
+// ターコイズ→黄緑→黄→琥珀→オレンジ→赤)。最小(最もマイナス)が青、
+// 最大(最もプラス)が赤になるよう配色。
+const PAYOUT_SCALE = [
+  {min:3000,     color:'#dc2626', label:'+3000枚以上'},
+  {min:2000,     color:'#f97316', label:'+2000枚以上'},
+  {min:1000,     color:'#f59e0b', label:'+1000枚以上'},
+  {min:500,      color:'#eab308', label:'+500枚以上'},
+  {min:0,        color:'#84cc16', label:'0枚以上'},
+  {min:-499,     color:'#14b8a6', label:'-1枚以上'},
+  {min:-999,     color:'#06b6d4', label:'-500枚以上'},
+  {min:-1999,    color:'#0ea5e9', label:'-1000枚以上'},
+  {min:-Infinity,color:'#1d4ed8', label:'-2000枚以上'},
+];
+function payoutColor(sa){
+  for(const band of PAYOUT_SCALE){
+    if(sa >= band.min) return band.color;
+  }
+  return PAYOUT_SCALE[PAYOUT_SCALE.length-1].color;
 }
 
 // consecutive days (counting back from the most recent day in the period) with
@@ -556,24 +608,29 @@ renderTrend();
 /* ---------- FLOOR VIEW ---------- */
 let selectedDate = dates[dates.length-1];
 const dateChipsWrap = document.getElementById('dateChips');
+const dateChipsWrapPayout = document.getElementById('dateChipsPayout');
 function renderDateChips(){
-  dateChipsWrap.innerHTML='';
+  [dateChipsWrap, dateChipsWrapPayout].forEach(w=>w.innerHTML='');
   const periodDates = getPeriodDates();
   if(!periodDates.includes(selectedDate) && selectedDate!=='avg'){
     selectedDate = periodDates.length ? periodDates[periodDates.length-1] : dates[dates.length-1];
   }
   periodDates.forEach(d=>{
-    const c = document.createElement('span');
-    c.className='chip'+(d===selectedDate?' active':'');
-    c.textContent = d.slice(5).replace('-','/');
-    c.onclick = ()=>{ selectedDate=d; renderDateChips(); renderFloor(); };
-    dateChipsWrap.appendChild(c);
+    [dateChipsWrap, dateChipsWrapPayout].forEach(wrap=>{
+      const c = document.createElement('span');
+      c.className='chip'+(d===selectedDate?' active':'');
+      c.textContent = d.slice(5).replace('-','/');
+      c.onclick = ()=>{ selectedDate=d; renderDateChips(); renderFloor(); renderPayout(); };
+      wrap.appendChild(c);
+    });
   });
-  const avgChip = document.createElement('span');
-  avgChip.className='chip'+(selectedDate==='avg'?' active':'');
-  avgChip.textContent='期間平均';
-  avgChip.onclick = ()=>{ selectedDate='avg'; renderDateChips(); renderFloor(); };
-  dateChipsWrap.appendChild(avgChip);
+  [dateChipsWrap, dateChipsWrapPayout].forEach(wrap=>{
+    const avgChip = document.createElement('span');
+    avgChip.className='chip'+(selectedDate==='avg'?' active':'');
+    avgChip.textContent='期間平均';
+    avgChip.onclick = ()=>{ selectedDate='avg'; renderDateChips(); renderFloor(); renderPayout(); };
+    wrap.appendChild(avgChip);
+  });
 }
 renderDateChips();
 
@@ -627,6 +684,10 @@ const maxCol = usedMax - usedMin;
 const floorGrid = document.getElementById('floorGrid');
 floorGrid.style.gridTemplateColumns = `repeat(${maxCol+1}, 34px)`;
 floorGrid.style.gridTemplateRows = `repeat(${maxRow+1}, 27px)`;
+
+const payoutGrid = document.getElementById('payoutGrid');
+payoutGrid.style.gridTemplateColumns = `repeat(${maxCol+1}, 34px)`;
+payoutGrid.style.gridTemplateRows = `repeat(${maxRow+1}, 27px)`;
 
 function renderFloor(){
   floorGrid.innerHTML='';
@@ -700,6 +761,97 @@ function renderFloor(){
 }
 renderFloor();
 
+function renderPayout(){
+  payoutGrid.innerHTML='';
+  const cellMap = {};
+  Object.entries(DATA.positions).forEach(([slot,pos])=>{
+    const col = (packedCol[slot] !== undefined) ? packedCol[slot] : (pos.col - marginShift);
+    cellMap[`${pos.row}_${col}`] = slot;
+  });
+  for(let r=0;r<=maxRow;r++){
+    for(let c=0;c<=maxCol;c++){
+      const slot = cellMap[`${r}_${c}`];
+      const div = document.createElement('div');
+      if(slot){
+        const days = DATA.slotData[slot] || [];
+        let sa=null, dayRec=null;
+        if(selectedDate==='avg'){
+          const avg = avgPayout(days, getPeriodDates());
+          sa = avg!=null ? Math.round(avg) : null;
+        } else {
+          dayRec = days.find(d=>d.date===selectedDate);
+          sa = dayRec ? dayRec.sa : null;
+        }
+        div.className='floor-cell';
+        div.style.background = sa!=null ? payoutColor(sa) : '#2a251d';
+        div.style.gridColumn = c+1;
+        div.style.gridRow = r+1;
+        div.textContent = slot;
+        div.addEventListener('mousemove', (e)=>{
+          const machine = DATA.slotMachine[slot];
+          let html = `<div class="tt-title">${machine} #${slot}</div>`;
+          if(dayRec){
+            html += `<div class="tt-row"><span>差枚</span><span>${dayRec.sa>=0?'+':''}${dayRec.sa.toLocaleString()}</span></div>`;
+            html += `<div class="tt-row"><span>G数</span><span>${dayRec.g.toLocaleString()}</span></div>`;
+            html += `<div class="tt-row"><span>推定設定</span><span>${dayRec.setting} (${dayRec.conf})</span></div>`;
+            html += `<div class="tt-row"><span>BIG確率</span><span>${dayRec.bbProb}</span></div>`;
+            html += `<div class="tt-row"><span>REG確率</span><span>${dayRec.rbProb}</span></div>`;
+          } else if(selectedDate==='avg'){
+            const avg = avgPayout(days, getPeriodDates());
+            html += `<div class="tt-row"><span>期間平均差枚</span><span>${avg!=null?(avg>=0?'+':'')+Math.round(avg).toLocaleString():'-'}</span></div>`;
+          } else {
+            html += `<div class="tt-row"><span>データなし</span><span>-</span></div>`;
+          }
+          tooltip.innerHTML = html;
+          tooltip.style.display='block';
+          const tw = tooltip.offsetWidth || 190;
+          const th = tooltip.offsetHeight || 120;
+          const margin = 10;
+          let left = e.clientX + 14;
+          let top = e.clientY + 14;
+          if(left + tw > window.innerWidth - margin){
+            left = e.clientX - tw - 14;
+          }
+          if(left < margin) left = margin;
+          if(top + th > window.innerHeight - margin){
+            top = e.clientY - th - 14;
+          }
+          if(top < margin) top = margin;
+          tooltip.style.left = left + 'px';
+          tooltip.style.top = top + 'px';
+        });
+        div.addEventListener('mouseleave', ()=>{ tooltip.style.display='none'; });
+      } else {
+        div.style.gridColumn = c+1;
+        div.style.gridRow = r+1;
+        div.style.background='transparent';
+      }
+      payoutGrid.appendChild(div);
+    }
+  }
+}
+renderPayout();
+
+// payout legend (3 rows x 3, read left-to-right / top-to-bottom from most
+// negative to most positive)
+(function(){
+  const el = document.getElementById('payoutLegend');
+  el.innerHTML = '';
+  PAYOUT_SCALE.slice().reverse().forEach(band=>{
+    const item = document.createElement('span');
+    item.className = 'ls-item';
+    const chip = document.createElement('span');
+    chip.className='legend-chip';
+    chip.style.background = band.color;
+    item.appendChild(chip);
+    const lab = document.createElement('span');
+    lab.className = 'ls-label';
+    lab.textContent = band.label;
+    item.appendChild(lab);
+    el.appendChild(item);
+  });
+})();
+
 // initial period range label
 (function(){
   const pd = getPeriodDates();
@@ -709,10 +861,13 @@ renderFloor();
 
 // machine legend (island list)
 const mLegend = document.getElementById('machineLegend');
+const mLegendPayout = document.getElementById('machineLegendPayout');
 machineOrder.forEach(m=>{
-  const s = document.createElement('span');
-  s.textContent = `${m}（${DATA.machineSlots[m].length}台）`;
-  mLegend.appendChild(s);
+  [mLegend, mLegendPayout].forEach(wrap=>{
+    const s = document.createElement('span');
+    s.textContent = `${m}（${DATA.machineSlots[m].length}台）`;
+    wrap.appendChild(s);
+  });
 });
 
 </script>
