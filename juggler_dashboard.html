@@ -231,9 +231,9 @@
       <div class="controls">
         <div class="chips" id="machineChips"></div>
         <select id="sortSelect">
+          <option value="slotAsc" selected>台番号順</option>
           <option value="avgDesc">平均設定 高い順</option>
           <option value="avgAsc">平均設定 低い順</option>
-          <option value="slotAsc">台番号順</option>
         </select>
       </div>
       <div style="overflow-x:auto;">
@@ -394,7 +394,7 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
 /* ---------- TREND VIEW ---------- */
 const machineOrder = Object.keys(DATA.machineSlots);
 let activeMachines = new Set(machineOrder);
-let sortMode = 'avgDesc';
+let sortMode = 'slotAsc';
 
 const chipsWrap = document.getElementById('machineChips');
 function renderChips(){
@@ -797,9 +797,10 @@ function renderPayout(){
           const machine = DATA.slotMachine[slot];
           let html = `<div class="tt-title">${machine} #${slot}</div>`;
           if(dayRec){
-            html += `<div class="tt-row"><span>差枚</span><span>${dayRec.sa>=0?'+':''}${dayRec.sa.toLocaleString()}</span></div>`;
-            html += `<div class="tt-row"><span>G数</span><span>${dayRec.g.toLocaleString()}</span></div>`;
             html += `<div class="tt-row"><span>推定設定</span><span>${dayRec.setting} (${dayRec.conf})</span></div>`;
+            html += `<div class="tt-row"><span>G数</span><span>${dayRec.g.toLocaleString()}</span></div>`;
+            html += `<div class="tt-row"><span>差枚</span><span>${dayRec.sa>=0?'+':''}${dayRec.sa.toLocaleString()}</span></div>`;
+            html += `<div class="tt-row"><span>合成確率</span><span>${dayRec.gousei}</span></div>`;
             html += `<div class="tt-row"><span>BIG確率</span><span>${dayRec.bbProb}</span></div>`;
             html += `<div class="tt-row"><span>REG確率</span><span>${dayRec.rbProb}</span></div>`;
           } else if(selectedDate==='avg'){
