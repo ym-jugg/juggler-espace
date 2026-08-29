@@ -1067,13 +1067,13 @@ function renderPredict(){
               html += `<div class="tt-row"><span>判定</span><span style="color:${judgement.color}">${judgement.label}</span></div>`;
             }
           }
-          const matched = (pred.predictions || []).find(p=>
-            (p.type === 'table' && p.target === slot) ||
+          const matched = (pred.predictions || []).filter(p=>
+            (p.type === 'table' && p.target.split('/').map(s=>s.trim()).includes(slot)) ||
             (p.type === 'machine' && p.target === machine)
           );
-          if(matched){
-            html += `<div style="margin-top:6px; color:var(--text-dim); font-size:10px; line-height:1.4; max-width:200px;">${matched.reason}</div>`;
-          }
+          matched.forEach(m=>{
+            html += `<div style="margin-top:6px; color:var(--text-dim); font-size:10px; line-height:1.4; max-width:220px;"><span style="color:var(--text-faint);">[${m.confidence}]</span> ${m.reason}</div>`;
+          });
           tooltip.innerHTML = html;
           tooltip.style.display='block';
           const tw = tooltip.offsetWidth || 190;
