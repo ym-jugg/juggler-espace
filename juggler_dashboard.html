@@ -330,6 +330,7 @@ async function __loadJugglerData(){
     slotMachine: config.slotMachine,
     positions: config.positions,
     machineSlots: config.machineSlots,
+    layoutChanges: config.layoutChanges || [],
     dates: dates,
   };
 }
@@ -378,6 +379,39 @@ const SETTING_COLOR = {1:'var(--s1)',2:'var(--s2)',3:'var(--s3)',4:'var(--s4)',5
 const SETTING_HEX = {1:'#1e3a8a',2:'#0891b2',3:'#16a34a',4:'#ca9a12',5:'#ea580c',6:'#dc2626'};
 const dates = DATA.dates;
 const tooltip = document.getElementById('tooltip');
+
+/* ---------- LAYOUT HISTORY (ホールの機種入れ替えを日付で切り替える) ----------
+   config.slotMachine / machineSlots は収集開始時点の基準レイアウト。
+   config.layoutChanges に日付順の差分が入っており、対象日以前の差分を順に
+   適用することで「その日の機種割当」が得られる。positions(物理位置)は不変。 */
+const LAYOUT_CHANGES = (DATA.layoutChanges || []).slice()
+  .sort((a,b)=> a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+const LAST_DATE = dates[dates.length-1];
+const __layoutCache = {};
+function layoutAt(date){
+  // 'avg'(期間平均表示)やnullなど日付でない値が来たら最新構成を返す
+  const key = (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) ? date : LAST_DATE;
+  if(__layoutCache[key]) return __layoutCache[key];
+  const sm = Object.assign({}, DATA.slotMachine);
+  for(const ch of LAYOUT_CHANGES){
+    if(ch.date > key) break;
+    (ch.removed || []).forEach(s => { delete sm[s]; });
+    Object.assign(sm, ch.set || {});
+  }
+  return (__layoutCache[key] = sm);
+}
+function machineSlotsOf(sm){
+  const ms = {};
+  Object.entries(sm).forEach(([slot, m])=>{ (ms[m] = ms[m] || []).push(slot); });
+  Object.values(ms).forEach(a => a.sort((x,y)=> parseInt(x)-parseInt(y)));
+  return ms;
+}
+// 台の「その日の機種名」。撤去済みの台は基準レイアウトの機種名で補う。
+function machineAt(slot, date){
+  return layoutAt(date)[slot] || DATA.slotMachine[slot] || '—';
+}
+const CUR_SM = layoutAt(LAST_DATE);
+const CUR_MS = machineSlotsOf(CUR_SM);
 
 /* ---------- PERIOD CONTROL (shared by both views) ---------- */
 let periodMode = '7'; // '7' | '14' | '30' | 'all' | 'custom'
@@ -443,7 +477,7 @@ renderPeriodChips();
 
 // meta
 document.getElementById('metaBox').innerHTML =
-  `期間: ${dates[0]} 〜 ${dates[dates.length-1]}<br>対象: ${Object.keys(DATA.machineSlots).length}機種 / ${Object.keys(DATA.slotMachine).length}台`;
+  `期間: ${dates[0]} 〜 ${dates[dates.length-1]}<br>対象: ${Object.keys(CUR_MS).length}機種 / ${Object.keys(CUR_SM).length}台`;
 
 // legend scale builder
 function buildScale(el){
@@ -473,7 +507,9 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
 });
 
 /* ---------- TREND VIEW ---------- */
-const machineOrder = Object.keys(DATA.machineSlots);
+// 基準レイアウトのキー順を機種の表示順として維持しつつ、現構成に存在する機種だけを並べる
+const machineOrder = Object.keys(DATA.machineSlots).filter(m => CUR_MS[m])
+  .concat(Object.keys(CUR_MS).filter(m => !(m in DATA.machineSlots)));
 let activeMachines = new Set(machineOrder);
 let sortMode = 'slotAsc';
 
@@ -488,7 +524,7 @@ function renderChips(){
   machineOrder.forEach(m=>{
     const c = document.createElement('span');
     c.className = 'chip' + (activeMachines.has(m) ? ' active':'');
-    c.textContent = m + '(' + DATA.machineSlots[m].length + ')';
+    c.textContent = m + '(' + (CUR_MS[m] || []).length + ')';
     c.onclick = ()=>{
       if(activeMachines.has(m) && activeMachines.size===1){ activeMachines = new Set(machineOrder); }
       else { activeMachines = new Set([m]); }
@@ -600,10 +636,12 @@ function renderTrend(){
   const tbody = document.getElementById('trendBody');
   tbody.innerHTML = '';
   const periodDates = getPeriodDates();
+  // 選択期間の最終日時点の機種割当で行を組む(過去期間を見れば当時の構成で表示される)
+  const periodMS = machineSlotsOf(layoutAt(periodDates.length ? periodDates[periodDates.length-1] : LAST_DATE));
   let rows = [];
   machineOrder.forEach(m=>{
     if(!activeMachines.has(m)) return;
-    DATA.machineSlots[m].forEach(slot=>{
+    (periodMS[m] || []).forEach(slot=>{
       const days = DATA.slotData[slot] || [];
       rows.push({machine:m, slot, days, avg: avgSetting(days, periodDates)});
     });
@@ -803,7 +841,7 @@ function renderFloor(){
         div.style.gridRow = r+1;
         div.textContent = slot;
         div.addEventListener('mousemove', (e)=>{
-          const machine = DATA.slotMachine[slot];
+          const machine = machineAt(slot, selectedDate);
           let html = `<div class="tt-title">${machine} #${slot}</div>`;
           if(dayRec){
             html += `<div class="tt-row"><span>推定設定</span><span>${dayRec.setting} (${dayRec.conf})</span></div>`;
@@ -875,7 +913,7 @@ function renderPayout(){
         div.style.gridRow = r+1;
         div.textContent = slot;
         div.addEventListener('mousemove', (e)=>{
-          const machine = DATA.slotMachine[slot];
+          const machine = machineAt(slot, selectedDate);
           let html = `<div class="tt-title">${machine} #${slot}</div>`;
           if(dayRec){
             html += `<div class="tt-row"><span>推定設定</span><span>${dayRec.setting} (${dayRec.conf})</span></div>`;
@@ -1054,7 +1092,7 @@ function renderPredict(){
         }
 
         div.addEventListener('mousemove', (e)=>{
-          const machine = DATA.slotMachine[slot];
+          const machine = machineAt(slot, selectedPredictDate);
           let html = `<div class="tt-title">${machine} #${slot}</div>`;
           html += `<div class="tt-row"><span>予想</span><span>${tier}</span></div>`;
           if(hasActual){
@@ -1134,7 +1172,7 @@ const mLegendPredict = document.getElementById('machineLegendPredict');
 machineOrder.forEach(m=>{
   [mLegend, mLegendPayout, mLegendPredict].forEach(wrap=>{
     const s = document.createElement('span');
-    s.textContent = `${m}（${DATA.machineSlots[m].length}台）`;
+    s.textContent = `${m}（${(CUR_MS[m] || []).length}台）`;
     wrap.appendChild(s);
   });
 });
