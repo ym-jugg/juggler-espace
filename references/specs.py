@@ -131,4 +131,24 @@ SPECS = {
             {'s':6,'big':237.4,'reg':237.4,'grape':5.96},
         ]
     },
+    'マイジャグラーⅥ': {
+        'big_payout': 240, 'reg_payout': 96, 'confirmed': True,
+        'cherry_payout': 2,
+        'cherry_prob_avg': None,  # 小役確率は2026-10-06時点で未公表
+        # 出典: slobase.jp https://slobase.jp/machines/myjuggler6 および
+        #       slopachi-quest.com https://www.slopachi-quest.com/article/maijaguraa-vi-settei/
+        #       (2026-10-06に2サイトで同一値を確認)
+        # 2026-10-05にエスパス日拓渋谷駅前新館へ4台導入(2225-2228、マイジャグラーVから置き換え)。
+        # 注意: BIG/REG確率・機械割はマイジャグラーVと全設定で完全に同一。
+        #       よってBIG/REGのみを使う現行の設定推定ロジックでは、この2機種は数値的に区別できない。
+        #       差はぶどう等の小役側にあると思われるが現時点で未公表のため grape は None。
+        'settings': [
+            {'s':1,'big':273.07,'reg':409.60,'grape':None},
+            {'s':2,'big':270.81,'reg':385.51,'grape':None},
+            {'s':3,'big':266.41,'reg':336.08,'grape':None},
+            {'s':4,'big':254.02,'reg':289.98,'grape':None},
+            {'s':5,'big':240.06,'reg':268.59,'grape':None},
+            {'s':6,'big':229.15,'reg':229.15,'grape':None},
+        ]
+    },
 }
